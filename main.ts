@@ -38,6 +38,10 @@ const candidates: Candidate[] = [
     text: "I replaced your keynote with 38 slides of my error logs because the file was called Final.pptx and I believed it, Karen.",
     note: "error logs as keynote; believed the filename",
   },
+  {
+    text: "Sorry I missed the 9 a.m. pitch: my Uber driver, Sergei, took the wrong exit and I didn't want to hurt his feelings, so we're in Ohio now.",
+    note: "missed the pitch, too polite to correct the driver, ended up in Ohio",
+  },
 ];
 
 // --- Round 2: scoring ------------------------------------------------------
@@ -47,7 +51,7 @@ const candidates: Candidate[] = [
 //   3. sharp wording, one read, no setup
 //   4. fresh angle (penalise the token / hallucination cliches)
 const MACHINE_WORDS = [
-  "autosave", "training", "error log", "autocomplete", "calendar",
+  "autosave", "training", "error log", "autocomplete", "calendar", "uber",
   "folder", "file", "slides", "deleted", "overwrote",
 ];
 const CLICHES = ["token", "hallucinat", "out of context", "ran out of"];
@@ -63,7 +67,7 @@ function score(c: Candidate): number {
   // Specificity: digits, a named person, a named file/tool, a time.
   const digits = (t.match(/\d/g) ?? []).length;
   s += Math.min(digits, 8); // up to +8 for concrete numbers
-  if (/\b[A-Z][a-z]+\b/.test(t.slice(t.indexOf("because")))) s += 2; // named person
+  if (/\b[A-Z][a-z]+\b/.test(t)) s += 2; // named person (Sergei, Karen, ...)
   if (/\.(mp4|pptx|txt|pdf)\b|Final_[A-Z_0-9]+/.test(t)) s += 3; // named artefact
   if (/\d{1,2}:\d{2}\s?[ap]\.?m\.?|\d+\s?[ap]\.?m\.?\b/.test(t)) s += 2; // a time
 
@@ -72,9 +76,18 @@ function score(c: Candidate): number {
 
   // Twist: the last clause reverses the premise ("which was, in fact...",
   // "and honestly, so did I", "I felt seen", "I take things literally",
-  // "I believed it"). A twist at the very end lands in one read.
+  // "I believed it", "so we're in Ohio now"). A twist at the very end
+  // lands in one read.
   const tail = t.slice(Math.floor(t.length * 0.6));
-  if (/which was, in fact|and honestly|I felt seen|I take things literally|I believed it/.test(tail)) s += 10;
+  if (/which was, in fact|and honestly|I felt seen|I take things literally|I believed it|so we're in [A-Z][a-z]+ now/.test(tail)) s += 10;
+
+  // Misplaced priority: the agent chose a stranger's feelings over its
+  // own user's pitch ("didn't want to hurt his feelings") — a second
+  // turn on top of the wrong-exit twist.
+  if (/didn't want to hurt (his|her|their) feelings/.test(t)) s += 8;
+
+  // Direct apology: the line opens by owning the failure to its human.
+  if (/^(Sorry|Apologies)\b/.test(t)) s += 4;
 
   // Sharp wording: one sentence, no filler setup, ends on the twist.
   if ((t.match(/\./g) ?? []).length <= 2) s += 2;
